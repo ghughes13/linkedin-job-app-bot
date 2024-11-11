@@ -2,14 +2,52 @@ from selenium import webdriver
 from time import sleep
 from dotenv import load_dotenv
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.keys import Keys
 import os
 import random
+import logging
 
 load_dotenv()
 
 class appBot(): 
   def __init__(self):
-    self.driver = webdriver.Chrome()
+    options = webdriver.ChromeOptions()
+    options.add_experimental_option("detach", True)
+    self.driver = webdriver.Chrome(options=options)
+
+  def iteration_loop(self): #can delete all of this after bot is finished. Added to improve iteration speed. 
+    current_el = ''
+
+    while True:
+      try:
+        user_input = input()
+
+        if user_input:
+          print(user_input)
+          split_input = user_input.split()
+          command_type = split_input[0] 
+          command_input = split_input[1]
+
+          if command_type == 'method':
+            self.invoke_method(command_input)
+          elif command_type == 'xpath':
+            current_el = self.driver.find_element('xpath', command_input)
+            print(current_el.get_attribute("outerHTML"))
+          elif command_type == 'click':
+            if current_el:
+              print(current_el)
+            else: 
+              print('No element selected')
+          elif command_type == 'input':
+            if current_el:
+              current_el.send_keys(command_input)
+          elif command_type == 'exit':
+            break
+          else: 
+              print('Invalid command')
+      except Exception as e:
+        logging.error(e)
+        print('An error occurred')
 
   def run_app(self): 
     self.open_linkedin()
@@ -23,10 +61,22 @@ class appBot():
 
     self.await_security_check_if_present()
 
-    print('Past security')
     self.move_to_jobs()
-    print('should have clicked on jobs')
-    sleep(30)
+    self.wait_random_time()
+
+    self.search_matching_jobs()
+
+    self.iteration_loop()
+
+  def invoke_method(self, method_name):
+    print(method_name)
+    # Check if the method exists in the instance's dictionary
+    if hasattr(self, method_name):
+        # Get the method and call it
+        method = getattr(self, method_name)
+        method()  # Invoke the method
+    else:
+        print(f"Method '{method_name}' not found.")
 
   def open_linkedin(self):
     self.driver.get('https://www.linkedin.com/')
@@ -40,27 +90,32 @@ class appBot():
     else:
       button_two.click()
 
-  def find_element_from_possible_locations(self, possible_locations, element_name):
-    """Tries each XPath in possible_locations and returns the element if found."""
+  def find_element_from_possible_locations(self, possible_locations, aria_label_value):
     for xpath in possible_locations:
         try:
             element = self.driver.find_element('xpath', xpath)
-            print(f"Found element at: {xpath}")
-            return element  # Return the element as soon as it's found
+            aria_label = element.get_attribute("aria-label")
+
+            if aria_label == aria_label_value:
+              print(f"Found element at: {xpath} with aria-label '{aria_label_value}'")
+              return element  # Return the element as soon as it's found with the correct aria-label
+            else:
+              print(f"Element found at: {xpath}, but aria-label '{aria_label}' does not match '{aria_label_value}'")
+              continue  # Go to the next XPath if aria-label does not match
         except NoSuchElementException:
             print(f"Element not found at: {xpath}")
             continue  # Move to the next XPath if element is not found
-    print(f"{element_name} could not be located with any provided XPath.")
+    print(f"{aria_label_value} could not be located with any provided XPath.")
     return None  # Return None if none of the locations work
 
   def linkedin_login(self):
     potential_username_input_locations = ['/html/body/div[1]/main/div[2]/div[1]/form/div[1]/input', '/html/body/div/main/div[2]/div[1]/form/div[1]/input']
-    potential_password_input_locations = ['/html/body/div[1]/main/div[2]/div[1]/form/div[3]/input', '/html/body/div/main/div[2]/div[1]/form/div[3]/input']
+    potential_password_input_locations = ['/html/body/div[1]/main/div[2]/div[1]/form/div[3]/input', '/html/body/div/main/div[2]/div[1]/form/div[3]/input', '/html/body/div/main/div[2]/div[1]/form/div[2]/input']
     potential_login_button_locations = ['/html/body/div[1]/main/div[2]/div[1]/form/div[4]/button','/html/body/div/main/div[2]/div[1]/form/div[4]/button', '/html/body/div/main/div[2]/div[1]/form/div[3]/button', '/html/body/div/main/div[2]/div[1]/form/div[5]/button']
 
-    username_input = self.find_element_from_possible_locations(potential_username_input_locations, 'Username Input')
-    password_input = self.find_element_from_possible_locations(potential_password_input_locations, 'Password Inputs')
-    login_button = self.find_element_from_possible_locations(potential_login_button_locations, 'Login Button')
+    username_input = self.find_element_from_possible_locations(potential_username_input_locations, 'Email or phone')
+    password_input = self.find_element_from_possible_locations(potential_password_input_locations, 'Password')
+    login_button = self.find_element_from_possible_locations(potential_login_button_locations, 'Sign in')
 
       # Check if all elements were found before proceeding
     if not username_input or not password_input or not login_button:
@@ -100,7 +155,11 @@ class appBot():
     job_location_input = self.driver.find_element('xpath', '/html/body/div[6]/header/div/div/div/div[2]/div[3]/div/div/input[1]')
 
     job_title_input.send_keys('Web Developer')
-    job_location_input.send_keys('Dallas, Texas')
+    job_location_input.send_keys('Dallas, Texas, United States')
+    job_location_input.send_keys(Keys.ENTER)
+
+  def crawl_job_list(self):
+    /html/body/div[6]/div[3]/div[4]/div/div/main/div/div[2]/div[1]/div/ul
 
   def wait_random_time(self):
     sleep(random.randint(4,7))
