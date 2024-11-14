@@ -1,0 +1,1 @@
+This is for educational purposes only. Do not actually use this as it's probably against linkedin's ToS.
