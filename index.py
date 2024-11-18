@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.service import Service
 import os
 import random
 import logging
@@ -13,20 +14,28 @@ load_dotenv()
 class appBot(): 
   def __init__(self):
 
+    #### Chrome Profile Setup. Adjust to your own profile path.
+    self.user_data_dir = os.getenv("USER_DATA_DIR")
+    self.profile_dir = os.getenv("PROFILE_DIR")
+    
     #### Driver Setup & Anti-Anti-Bot Countermeasures. 
     options = webdriver.ChromeOptions()
+    options.add_argument(f"user-data-dir={self.user_data_dir}")
+    options.add_argument(f"profile-directory={self.profile_dir}") 
+    options.add_argument("--remote-debugging-port=9222")  # Debugging port
     options.add_argument("--disable-blink-features=AutomationControlled") 
     options.add_experimental_option("excludeSwitches", ["enable-automation"]) 
     options.add_experimental_option("useAutomationExtension", False) 
-
     options.add_experimental_option("detach", True)
+
+
     self.driver = webdriver.Chrome(options=options)
     self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})") 
 
     userAgentArray = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
-]
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
+    ]
 
     for i in range(len(userAgentArray)):
         # setting User Agent iteratively as Chrome 108 and 107
@@ -92,11 +101,11 @@ class appBot():
     self.iteration_loop()
 
   #################################
-  ########### UTILITIES ###########
+  ###### MAIN FUNCTIONALITY #######
   #################################
 
   def open_linkedin(self):
-    self.driver.get('https://www.linkedin.com/')
+    self.driver.get('https://www.linkedin.com/') 
 
   def navigate_to_signin(self):
     button_one = self.driver.find_element('xpath', '/html/body/nav/div/a[1]')
@@ -146,12 +155,12 @@ class appBot():
       sleep(5)
     
   def move_to_jobs(self):
-    jobs_button = self.driver.find_by_xpath('//a[contains(@href,"https://www.linkedin.com/jobs/?")]')
+    jobs_button = self.driver.find_element(By.XPATH, '//a[@href="https://www.linkedin.com/jobs/?"]')
     jobs_button.click()
 
   def search_matching_jobs(self):
-    job_title_input = self.driver.find_element('xpath', '/html/body/div[6]/header/div/div/div/div[2]/div[2]/div/div/input[1]')   #job input path  ||/html/body/div[5]/header/div/div/div/div[2]/div[2]/div/div/input[1]
-    job_location_input = self.driver.find_element('xpath', '/html/body/div[6]/header/div/div/div/div[2]/div[3]/div/div/input[1]')
+    job_title_input = self.driver.find_element(By.CSS_SELECTOR, "[aria-label='Search by title, skill, or company']")   
+    job_location_input = self.driver.find_element(By.CSS_SELECTOR, "[aria-label='Search by title, skill, or company']")
 
     job_title_input.send_keys('Web Developer')
     job_location_input.send_keys('Dallas, Texas, United States')
@@ -159,11 +168,14 @@ class appBot():
     self.current_jobs_page = 1
 
   def crawl_job_list(self):
-    jobs_container = self.driver.find_element('xpath', '/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[1]/div/ul')
-    jobs_list = jobs_container.find_elements(By.CSS_SELECTOR, "> li")
-
+    jobs_container = self.driver.find_element(By.CLASS_NAME, "scaffold-layout__list-container")
+    print('was valid')
+    jobs_list = jobs_container.find_elements(By.TAG_NAME, "li")
+    print('was also valid')
+    print(jobs_list)
     for job in jobs_list:
       try:
+        print('trying')
         # Find and log the h1 text
         job_title = job.find_element(By.TAG_NAME, "strong")
         print(f"Job Title: {job_title.text}")
@@ -173,17 +185,16 @@ class appBot():
         # job_title_link.click()
         
         # Wait for content to load
-        time.sleep(2)  # Adjust based on loading time or use WebDriverWait
+        sleep(2)  # Adjust based on loading time or use WebDriverWait
         
-        # # Interact with the loaded content
         # loaded_content = driver.find_element(By.CSS_SELECTOR, "div.loaded-content")  # Example selector
         # print(f"Loaded Content: {loaded_content.text}")
-
+        print("tried")
       except Exception as e:
           print(f"Error processing li: {e}")
 
   def next_jobs_page(self):
-    next_page = self.driver.find_elements_by_css_selector(f"[aria-label=Page {self.current_jobs_page + 1}]")
+    next_page = self.driver.find_elements(By.CSS_SELECTOR, f'[aria-label="Page {self.current_jobs_page + 1}"]')
     next_page.click()
 
   #################################
@@ -221,7 +232,6 @@ class appBot():
         method()
     else:
         print(f"Method '{method_name}' not found.")
-
 
 bot = appBot()
 bot.run_app()
