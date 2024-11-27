@@ -32,18 +32,14 @@ class appBot():
     self.driver = webdriver.Chrome(options=options)
     self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})") 
 
-    userAgentArray = [
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
-    ]
-
-    for i in range(len(userAgentArray)):
-        # setting User Agent iteratively as Chrome 108 and 107
-        self.driver.execute_cdp_cmd(
-            "Network.setUserAgentOverride", {"userAgent": userAgentArray[i]}
-        )
-        print(self.driver.execute_script("return navigator.userAgent;"))
-        self.driver.get("https://httpbin.io/headers")
+    
+    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    
+    self.driver.execute_cdp_cmd(
+        "Network.setUserAgentOverride", {"userAgent": userAgent}
+    )
+    print(self.driver.execute_script("return navigator.userAgent;"))
+    self.driver.get("https://httpbin.io/headers")
     
     self.current_jobs_page = 0
 
@@ -83,7 +79,7 @@ class appBot():
 
   def run_app(self): 
     self.open_linkedin()
-    # self.wait_random_time() #wait for site to load
+    self.wait_random_time() #wait for site to load
 
     # self.navigate_to_signin()
     # self.wait_random_time() #wait for page load before invoking next function.
@@ -93,10 +89,11 @@ class appBot():
 
     # self.await_security_check_if_present()
 
-    # self.move_to_jobs()
-    # self.wait_random_time()
+    self.move_to_jobs()
+    self.wait_random_time()
 
-    # self.search_matching_jobs()
+    self.search_matching_jobs()
+    self.wait_random_time()
 
     self.iteration_loop()
 
@@ -160,42 +157,88 @@ class appBot():
 
   def search_matching_jobs(self):
     job_title_input = self.driver.find_element(By.CSS_SELECTOR, "[aria-label='Search by title, skill, or company']")   
-    job_location_input = self.driver.find_element(By.CSS_SELECTOR, "[aria-label='Search by title, skill, or company']")
+    job_location_input = self.driver.find_element(By.CSS_SELECTOR, "[aria-label='City, state, or zip code']")
 
     job_title_input.send_keys('Web Developer')
+
+    if(job_location_input.get_attribute('value') != ''):
+      print('Clearing Job Location Input')
+      job_location_input.clear()
+    
     job_location_input.send_keys('Dallas, Texas, United States')
     job_location_input.send_keys(Keys.ENTER)
     self.current_jobs_page = 1
 
   def crawl_job_list(self):
-    jobs_container = self.driver.find_element(By.CLASS_NAME, "scaffold-layout__list-container")
-    print('was valid')
-    jobs_list = jobs_container.find_elements(By.TAG_NAME, "li")
-    print('was also valid')
-    print(jobs_list)
+
+    job_container_locations = ['/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[1]/div/ul', '/html/body/div[6]/div[3]/div[4]/div/div/main/div/div[2]/div[1]/div/ul']
+    jobs_container = self.find_element_from_possible_locations(job_container_locations, "none")
+
+    jobs_list = jobs_container.find_elements(By.XPATH, "./li")
+    
+    print('===========================')
+    print('===========================')
+    print('Jobs List Length')
+    print(len(jobs_list))
+    print('===========================')
+    print('===========================')
+
     for job in jobs_list:
+      #Extract into function
+      job_title_raw = ''
+      job_title_link = ''
+      job_details_raw = ''
+
       try:
-        print('trying')
-        # Find and log the h1 text
-        job_title = job.find_element(By.TAG_NAME, "strong")
-        print(f"Job Title: {job_title.text}")
+        try:
+          job_title_link = job.find_element(By.XPATH, ".//a[contains(@class, 'job-card-list__title')]")
+        except Exception as e:
+          print(f"Error finding job title: {e}")
+          sleep(5)
+          continue
+
+        sleep(3)  
+        job_title_link.click()
+        sleep(3)  
+
+        job_title_locations = ["/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[2]/div/div[2]/div/div[1]/div/div[1]/div/div[1]/div/div[2]/div/h1/a"]
+        job_title_raw = self.find_element_from_possible_locations(job_title_locations, "none")
         
-        # Find and click the button inside the li
-        job_title_link = job.find_element(By.TAG_NAME, "a")
-        # job_title_link.click()
-        
-        # Wait for content to load
-        sleep(2)  # Adjust based on loading time or use WebDriverWait
-        
-        # loaded_content = driver.find_element(By.CSS_SELECTOR, "div.loaded-content")  # Example selector
-        # print(f"Loaded Content: {loaded_content.text}")
-        print("tried")
+        try: 
+          job_detail_locations = ["/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[2]/div/div[2]/div/div[1]/div/div[4]/article/div/div[1]"]
+          job_details_raw = self.find_element_from_possible_locations(job_detail_locations, "none")
+        except Exception as e:
+          print(f"Error finding job description: {e}")
+          sleep(5)
+          continue
+
+        try: 
+          self.get_job_details(job)
+        except:
+          print("it didn't work")
+
+        print(job_title_raw.text, job_details_raw.text)
+        sleep(10)
+        #infoke function to make API call to GPT for job assessment here
+
+        #handle applying for job via linkedin. 
       except Exception as e:
-          print(f"Error processing li: {e}")
+          print(f"Error processing job: {e}")
+          sleep(2)
+
+  def get_job_details(self, job):
+    job_title = job.find_element(By.XPATH, ".//a[contains(@class, 'job-card-list__title')]//span//strong")
+    job_title_link = job.find_element(By.XPATH, ".//a[contains(@class, 'job-card-list__title')]")
+    job_title_link.click()
+    sleep(10)  
+    job_details = self.driver.find_element(By.CLASS_NAME, "jobs-search__job-details--wrapper")
+    print(job_title, job_details)
+    return job_title, job_details
 
   def next_jobs_page(self):
-    next_page = self.driver.find_elements(By.CSS_SELECTOR, f'[aria-label="Page {self.current_jobs_page + 1}"]')
-    next_page.click()
+    next_page_button = self.driver.find_elements(By.CSS_SELECTOR, f'[aria-label="Page {self.current_jobs_page + 1}"]')
+    print(next_page_button.get_attribute('outerHTML'))
+    next_page_button.click()
 
   #################################
   ########### UTILITIES ###########
@@ -210,14 +253,18 @@ class appBot():
     for xpath in possible_locations:
         try:
             element = self.driver.find_element('xpath', xpath)
-            aria_label = element.get_attribute("aria-label")
 
-            if aria_label == aria_label_value:
-              print(f"Found element at: {xpath} with aria-label '{aria_label_value}'")
-              return element  # Return the element as soon as it's found with the correct aria-label
+            if(aria_label_value != 'none'): 
+              aria_label = element.get_attribute("aria-label")
+              if aria_label == aria_label_value:
+                print(f"Found element at: {xpath} with aria-label '{aria_label_value}'")
+                return element  # Return the element as soon as it's found with the correct aria-label
+              else:
+                print(f"Element found at: {xpath}, but aria-label '{aria_label}' does not match '{aria_label_value}'")
+                continue  # Go to the next XPath if aria-label does not match
             else:
-              print(f"Element found at: {xpath}, but aria-label '{aria_label}' does not match '{aria_label_value}'")
-              continue  # Go to the next XPath if aria-label does not match
+              print('Element Found')
+              return element
         except NoSuchElementException:
             print(f"Element not found at: {xpath}")
             continue  # Move to the next XPath if element is not found
