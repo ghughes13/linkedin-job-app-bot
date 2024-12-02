@@ -1,3 +1,7 @@
+import os
+import random
+import logging
+
 from selenium import webdriver
 from time import sleep
 from dotenv import load_dotenv
@@ -5,14 +9,18 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
-import os
-import random
-import logging
+from openai import OpenAI
 
 load_dotenv()
 
+client = OpenAI(
+  api_key=os.getenv("OPEN_AI_KEY"),
+  organization=os.getenv("ORGANIZATION_ID")
+)
+
 class appBot(): 
   def __init__(self):
+    os.system("taskkill /F /IM chrome.exe")
 
     #### Chrome Profile Setup. Adjust to your own profile path.
     self.user_data_dir = os.getenv("USER_DATA_DIR")
@@ -184,7 +192,6 @@ class appBot():
     print('===========================')
 
     for job in jobs_list:
-      #Extract into function
       job_title_raw = ''
       job_title_link = ''
       job_details_raw = ''
@@ -201,39 +208,90 @@ class appBot():
         job_title_link.click()
         sleep(3)  
 
-        job_title_locations = ["/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[2]/div/div[2]/div/div[1]/div/div[1]/div/div[1]/div/div[2]/div/h1/a"]
-        job_title_raw = self.find_element_from_possible_locations(job_title_locations, "none")
-        
-        try: 
-          job_detail_locations = ["/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[2]/div/div[2]/div/div[1]/div/div[4]/article/div/div[1]"]
-          job_details_raw = self.find_element_from_possible_locations(job_detail_locations, "none")
-        except Exception as e:
-          print(f"Error finding job description: {e}")
-          sleep(5)
-          continue
-
-        try: 
-          self.get_job_details(job)
+        #Plan to expand further. But MVP will only handle easy apply.
+        easy_apply_button=''
+        try:
+          easy_apply_button=self.driver.find_element(By.XPATH, "//*[contains(@aria-label, 'Easy Apply')]")
         except:
-          print("it didn't work")
+          print('Not Easy Apply')
 
-        print(job_title_raw.text, job_details_raw.text)
-        sleep(10)
-        #infoke function to make API call to GPT for job assessment here
+        if(easy_apply_button):
+          try: 
+            job_title_locations = ["/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[2]/div/div[2]/div/div[1]/div/div[1]/div/div[1]/div/div[2]/div/h1/a"]
+            job_title_raw = self.find_element_from_possible_locations(job_title_locations, "none")
+          except Exception as e:
+            print(f"Error finding job title: {e}")
+            sleep(5)
+            continue
 
-        #handle applying for job via linkedin. 
+          try: 
+            job_detail_locations = ["/html/body/div[5]/div[3]/div[4]/div/div/main/div/div[2]/div[2]/div/div[2]/div/div[1]/div/div[4]/article/div/div[1]"]
+            job_details_raw = self.find_element_from_possible_locations(job_detail_locations, "none")
+          except Exception as e:
+            print(f"Error finding job description: {e}")
+            sleep(5)
+            continue
+
+          #################################
+          ###EXTRACT THIS OUT INTO FUNC####
+          #################################
+          job_title = job_title_raw.text
+          job_description = job_details_raw.text
+
+          thread = client.beta.threads.create()
+          message = client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=f"scenario type: 1 --- job title: {job_title} --- job description: {job_description}"
+          )
+          run = client.beta.threads.runs.create_and_poll(
+            thread_id=thread.id,
+            assistant_id=os.getenv("ASSISTANT_ID"),
+          )
+          
+          run_status = "in progress"
+          is_qualified_for_job = ''
+
+          while(run_status == 'in progress'):
+            if run.status == 'completed': 
+              messages = client.beta.threads.messages.list(
+                thread_id=thread.id
+              )
+              is_qualified_for_job = messages.data[0].content[0].text.value
+              run_status=run.status
+            else:
+              print(run.status)
+
+          print('===========================')
+          print('===========================')
+          print('Jobs List Length')
+          print("Title: ", job_title, "Description: ", job_description, "Qualified: ", is_qualified_for_job)
+          print('===========================')
+          print('===========================')
+
+          if(is_qualified_for_job):
+            easy_apply_button.click()
+            job_safety_reminder='' 
+
+            try: 
+              job_safety_reminder=self.driver.find_element(By.XPATH, "//*[contains(text(), 'Job search safety reminder')]")
+            except: 
+              print('Job is not sketch. Proceeding with application.')
+
+            if(job_safety_reminder):
+              close_easy_apply_app=self.driver.find_element(By.XPATH, "//*[contains(@aria-label, 'Dismiss')]")
+              close_easy_apply_app.click()
+
+          sleep(10)
+          #infoke function to make API call to GPT for job assessment here
+
+          #handle applying for job via linkedin.
+        else: 
+          print('Not easy apply. Moving to next job.') 
+          continue
       except Exception as e:
           print(f"Error processing job: {e}")
           sleep(2)
-
-  def get_job_details(self, job):
-    job_title = job.find_element(By.XPATH, ".//a[contains(@class, 'job-card-list__title')]//span//strong")
-    job_title_link = job.find_element(By.XPATH, ".//a[contains(@class, 'job-card-list__title')]")
-    job_title_link.click()
-    sleep(10)  
-    job_details = self.driver.find_element(By.CLASS_NAME, "jobs-search__job-details--wrapper")
-    print(job_title, job_details)
-    return job_title, job_details
 
   def next_jobs_page(self):
     next_page_button = self.driver.find_elements(By.CSS_SELECTOR, f'[aria-label="Page {self.current_jobs_page + 1}"]')
@@ -270,6 +328,8 @@ class appBot():
             continue  # Move to the next XPath if element is not found
     print(f"{aria_label_value} could not be located with any provided XPath.")
     return None  # Return None if none of the locations work
+  
+  #maybe make find element function that return the el or false so there aren't as many try except blocks.
 
   #For testing or manually invoking functions while app is running
   def invoke_method(self, method_name): 
